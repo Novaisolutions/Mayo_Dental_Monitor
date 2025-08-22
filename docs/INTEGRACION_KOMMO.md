@@ -1,131 +1,234 @@
-# 🔌 Integración Kommo CRM - Mayo Dental Monitor
+# 🔗 Integración Kommo CRM - Mayo Dental Monitor
 
-## 📋 Descripción
+## 📋 **Descripción General**
 
-Este documento describe la integración del sistema Mayo Dental Monitor con el CRM Kommo, permitiendo la visualización y gestión de leads en tiempo real.
+Este documento describe la integración del Monitor Mayo Dental con el CRM Kommo, permitiendo la sincronización bidireccional de datos entre el sistema de prospectos y el pipeline de ventas de Mayo Dental.
 
-## ✨ Funcionalidades Implementadas
+## 🎯 **Funcionalidades Principales**
 
-### 🎯 **Visualización de Leads**
-- Dashboard completo de leads del pipeline de Mayo Dental
-- Estadísticas en tiempo real (total de leads, valor promedio, tasa de conversión)
-- Filtrado por status y pipeline
-- Paginación automática para grandes volúmenes de datos
+### ✅ **Envío de Prospectos a Kommo**
+- **Creación automática de leads** desde prospectos del monitor
+- **Mapeo inteligente de datos** con cálculo automático de precios
+- **Generación de contactos** asociados a cada lead
+- **Sistema de tags automáticos** basado en datos del prospecto
+- **Notas inteligentes** con resumen completo de información
 
-### 📊 **Gestión de Prospectos**
-- Envío automático de prospectos como nuevos leads a Kommo
-- Creación automática de contactos asociados
-- Mapeo inteligente de datos del prospecto
-- Cálculo automático de precios basado en tratamientos detectados
+### ✅ **Visualización de Datos Kommo**
+- **Dashboard en tiempo real** del pipeline de Mayo Dental
+- **Estadísticas de leads** y conversiones
+- **Filtrado por estados** del pipeline
+- **Información detallada** de cada lead
 
-### 🏷️ **Sistema de Tags Automáticos**
-- Tags basados en score de interés
-- Tags de urgencia detectada
-- Tags de carrera/plantel de interés
-- Tags estáticos (NUEVO, MAYO DENTAL)
+## 🏗️ **Arquitectura de la Integración**
 
-## 🛠️ Configuración Técnica
+### **Componentes Principales**
+
+1. **`useKommo` Hook** - Lógica de comunicación con API Kommo
+2. **`KommoView` Component** - Dashboard de visualización
+3. **`ProspectosView` Component** - Envío de prospectos
+4. **Proxy Vite** - Resolución de CORS para desarrollo local
+
+### **Flujo de Datos**
+
+```
+Prospecto (Monitor) → Análisis IA → Mapeo Inteligente → Kommo API → Lead + Contacto + Notas
+```
+
+## 🔧 **Configuración Técnica**
 
 ### **Variables de Entorno**
+
 ```bash
 VITE_KOMMO_ACCESS_TOKEN=tu_token_aqui
-VITE_KOMMO_BASE_URL=https://bizmakermx.kommo.com/api/v4
+VITE_KOMMO_BASE_URL=https://bizmakermx.kommo.com
+VITE_MAYO_DENTAL_PIPELINE_ID=10619619
 ```
 
-### **Pipeline ID**
-- **Mayo Dental Pipeline**: `10619619`
+### **Endpoints de API Utilizados**
 
-### **Endpoints Utilizados**
-- `/leads` - Crear y obtener leads
-- `/contacts` - Crear contactos
-- `/events` - Crear actividades/notas
-- `/tasks` - Crear tareas (fallback)
+- `GET /leads` - Obtener leads del pipeline
+- `POST /leads` - Crear nuevo lead
+- `POST /contacts` - Crear contacto asociado
+- `GET /pipelines` - Obtener pipelines disponibles
 
-## 🔄 Flujo de Datos
+### **Proxy de Desarrollo**
 
-### **1. Prospecto → Lead**
-```
-Prospecto (Monitor) → Contacto (Kommo) → Lead (Kommo) → Notas/Actividades
-```
-
-### **2. Mapeo de Datos**
-- **Nombre**: `prospecto.nombre + " - Mayo Dental"`
-- **Precio**: Cálculo inteligente basado en tratamientos
-- **Status**: Primer status disponible del pipeline
-- **Tags**: Generación automática basada en datos del prospecto
-
-### **3. Cálculo de Precios**
 ```typescript
-const treatmentPrices = {
-  'limpieza': 800,
-  'implante': 18000,
-  'ortodoncia': 25000,
-  // ... más tratamientos
+// vite.config.ts
+server: {
+  proxy: {
+    '/api/kommo': {
+      target: 'https://bizmakermx.kommo.com',
+      changeOrigin: true,
+      rewrite: (path) => path.replace(/^\/api\/kommo/, '')
+    }
+  }
+}
+```
+
+## 📊 **Mapeo de Datos Prospecto → Kommo**
+
+### **Campos Principales**
+
+| Campo Prospecto | Campo Kommo | Lógica de Mapeo |
+|----------------|-------------|------------------|
+| `nombre` | `name` | Nombre descriptivo + tratamiento detectado |
+| `numero_telefono` | `phone` | Campo personalizado de teléfono |
+| `score_interes` | `tags` | Tags automáticos (ALTO/MEDIO/NORMAL) |
+| `presupuesto_mencionado` | `price` | Precio directo o cálculo inteligente |
+| `resumen_ia` | `notes` | Notas consolidadas del prospecto |
+
+### **Cálculo Inteligente de Precios**
+
+```typescript
+const calculateDentalPrice = (prospecto) => {
+  // 1. Usar presupuesto mencionado si existe
+  if (prospecto.presupuesto_mencionado > 0) {
+    return prospecto.presupuesto_mencionado;
+  }
+  
+  // 2. Detectar tratamientos y asignar precios
+  const treatmentPrices = {
+    'limpieza': 800,
+    'implante': 18000,
+    'ortodoncia': 25000,
+    // ... más tratamientos
+  };
+  
+  // 3. Fallback basado en score de interés
+  if (prospecto.score_interes > 80) return 15000;
+  if (prospecto.score_interes > 60) return 8000;
+  return 3000;
 };
 ```
 
-## 🚀 Uso del Sistema
+### **Generación de Tags Automáticos**
 
-### **Enviar Prospecto a Kommo**
-1. Navegar a la pestaña "Prospectos"
-2. Seleccionar un prospecto
-3. Hacer clic en "Enviar a Kommo" (botón con icono Building2)
-4. El sistema creará automáticamente:
-   - Contacto en Kommo
-   - Lead asociado al contacto
-   - Tags automáticos
-   - Notas con resumen del prospecto
+```typescript
+const autoTags = [
+  // Basado en score
+  prospecto.score_interes > 80 ? 'ALTO INTERÉS' : 'NORMAL',
+  
+  // Basado en urgencia
+  prospecto.urgencia_detectada?.includes('alta') ? 'URGENTE' : null,
+  
+  // Basado en carrera
+  prospecto.carrera_interes?.toUpperCase(),
+  
+  // Tags estáticos
+  'NUEVO', 'MAYO DENTAL'
+].filter(Boolean);
+```
 
-### **Visualizar CRM**
-1. Navegar a la pestaña "CRM Kommo"
-2. Ver dashboard completo de leads
-3. Filtrar por status o pipeline
-4. Acceder a estadísticas en tiempo real
+## 🚀 **Proceso de Envío a Kommo**
 
-## ⚠️ Limitaciones Actuales
+### **Paso 1: Creación de Contacto**
+```typescript
+const contactData = {
+  name: prospecto.nombre,
+  phone: prospecto.numero_telefono,
+  custom_fields: [
+    {
+      field_id: 859046, // Tipo de contacto
+      values: [{ enum_id: 714886 }] // "Prospecto"
+    }
+  ]
+};
 
-### **Notas Automáticas**
-- Las notas se intentan crear usando múltiples estrategias
-- Si fallan, se muestran en consola para agregación manual
-- El lead se crea exitosamente aunque las notas fallen
+const contact = await createContact(contactData);
+```
 
-### **Campos Personalizados**
-- Los IDs de campos personalizados pueden variar entre pipelines
-- Se requiere configuración manual para campos específicos
+### **Paso 2: Creación del Lead**
+```typescript
+const leadData = {
+  name: `${prospecto.nombre} - Mayo Dental`,
+  price: estimatedPrice,
+  status_id: selectedStatus.id,
+  pipeline_id: 10619619,
+  tags: autoTags,
+  contact_id: contact.id,
+  notes: smartNotes
+};
 
-## 🔧 Solución de Problemas
+const lead = await createLead(leadData);
+```
+
+### **Paso 3: Manejo de Errores y Reintentos**
+```typescript
+// Intentar con diferentes status si falla
+const statusesToTry = [statuses[1], statuses[0], statuses[2]];
+let leadCreated = false;
+
+for (const status of statusesToTry) {
+  try {
+    await createLead({ ...leadData, status_id: status.id });
+    leadCreated = true;
+    break;
+  } catch (error) {
+    console.log(`Falló con status ${status.name}`);
+  }
+}
+```
+
+## 📱 **Interfaz de Usuario**
+
+### **Vista de Prospectos**
+- Botón "Enviar a Kommo" en cada prospecto
+- Indicador de estado de envío
+- Confirmación de éxito con detalles del lead creado
+
+### **Dashboard Kommo**
+- Estadísticas en tiempo real
+- Visualización del pipeline por estados
+- Lista de leads con información detallada
+- Filtros y navegación intuitiva
+
+## 🔍 **Solución de Problemas**
 
 ### **Error 400: Campo Personalizado Inválido**
-- Eliminar campos personalizados del payload
-- Usar solo campos estándar de Kommo
-- Verificar IDs de campos en la documentación oficial
+- **Causa**: ID de campo personalizado incorrecto para el pipeline
+- **Solución**: Eliminar campos personalizados problemáticos o ajustar IDs
 
-### **Error 404: Endpoint No Encontrado**
-- Probar diferentes endpoints para notas
-- Usar `/events` como alternativa a `/notes`
-- Implementar fallback a tareas
+### **Error 404: Endpoint de Notas**
+- **Causa**: Endpoint `/notes` no disponible en esta instancia de Kommo
+- **Solución**: Usar estrategias alternativas (eventos, tareas, descripción)
 
-## 📈 Próximas Mejoras
+### **Problemas de CORS en Desarrollo**
+- **Causa**: Restricciones de CORS en navegador
+- **Solución**: Configurar proxy en Vite para desarrollo local
 
-1. **Configuración de Campos Personalizados**
-   - Detección automática de IDs de campos
-   - Mapeo dinámico de campos del prospecto
+## 📈 **Métricas y Monitoreo**
 
-2. **Sincronización Bidireccional**
-   - Actualización automática desde Kommo
-   - Sincronización de cambios de status
+### **Datos de Rendimiento**
+- Tiempo de respuesta de API Kommo
+- Tasa de éxito en creación de leads
+- Número de prospectos enviados por día
+- Errores y reintentos necesarios
 
-3. **Métricas Avanzadas**
-   - Análisis de funnel por status
-   - Predicciones de conversión
-   - Reportes automáticos
+### **Logs de Debug**
+```typescript
+console.log('=== ANÁLISIS DE LEADS EXISTENTES ===');
+console.log('=== DEBUG PIPELINES ===');
+console.log('=== MAPEO DE DATOS PROSPECTO → KOMMO ===');
+console.log('=== 🚀 LEAD DATA COMPLETO A ENVIAR ===');
+```
 
-## 🔗 Enlaces Útiles
+## 🔮 **Mejoras Futuras**
 
-- [API Kommo Documentation](https://www.kommo.com/developers/api)
-- [Pipeline Mayo Dental](https://bizmakermx.kommo.com/leads/pipeline/10619619)
-- [Monitor Original](https://github.com/Novaisolutions/Monitor_MKT)
+1. **Sincronización Bidireccional** - Actualizar prospectos desde Kommo
+2. **Webhooks** - Notificaciones en tiempo real de cambios en Kommo
+3. **Mapeo de Campos Personalizados** - Detección automática de IDs válidos
+4. **Historial de Sincronización** - Log de todas las operaciones realizadas
+5. **Validación de Datos** - Verificación antes del envío a Kommo
+
+## 📚 **Referencias**
+
+- [Documentación API Kommo](https://www.kommo.com/developers)
+- [Guía de Integración](https://www.kommo.com/developers/api)
+- [Campos Personalizados](https://www.kommo.com/developers/api/custom_fields)
 
 ---
 
-*Desarrollado por Novai Solutions para Mayo Dental*
+**Desarrollado por Novai Solutions**  
+**Versión**: 1.0.0  
+**Última actualización**: Agosto 2025
